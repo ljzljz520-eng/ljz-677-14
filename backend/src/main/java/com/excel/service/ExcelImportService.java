@@ -4,6 +4,7 @@ import cn.hutool.core.util.IdUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.support.ExcelTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.excel.dto.ExcelDataDTO;
 import com.excel.dto.ImportResultDTO;
@@ -126,14 +127,99 @@ public class ExcelImportService {
     }
 
     /**
-     * 根据批次号获取数据
+     * 根据批次号获取数据（支持按上报状态筛选）
      */
-    public Page<ExcelData> getDataByBatch(String batchNo, Integer pageNum, Integer pageSize) {
+    public Page<ExcelData> getDataByBatch(String batchNo, Integer pageNum, Integer pageSize, Integer reportStatus) {
         Page<ExcelData> page = new Page<>(pageNum, pageSize);
-        return excelDataMapper.selectPage(page,
-                new LambdaQueryWrapper<ExcelData>()
-                        .eq(ExcelData::getBatchNo, batchNo)
-                        .orderByAsc(ExcelData::getId));
+        LambdaQueryWrapper<ExcelData> wrapper = new LambdaQueryWrapper<ExcelData>()
+                .eq(ExcelData::getBatchNo, batchNo)
+                .orderByAsc(ExcelData::getRowNo)
+                .orderByAsc(ExcelData::getId);
+        if (reportStatus != null) {
+            wrapper.eq(ExcelData::getReportStatus, reportStatus);
+        }
+        return excelDataMapper.selectPage(page, wrapper);
+    }
+
+    /**
+     * 获取批次按上报状态分组的统计
+     */
+    public java.util.Map<String, Object> getBatchStats(String batchNo) {
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        int total = 0, pending = 0, success = 0, failed = 0;
+        for (java.util.Map<String, Object> row : excelDataMapper.countGroupByReportStatus(batchNo)) {
+            Integer s = ((Number) row.get("reportStatus")).intValue();
+            int c = ((Number) row.get("count")).intValue();
+            total += c;
+            switch (s) {
+                case 0 -> pending += c;
+                case 1 -> success += c;
+                case 2 -> failed += c;
+                default -> { }
+            }
+        }
+        stats.put("total", total);
+        stats.put("pending", pending);
+        stats.put("success", success);
+        stats.put("failed", failed);
+        return stats;
+    }
+
+    /**
+     * 修正异常行数据：更新业务字段后，将该行状态重置为"待重送(0)"。
+     * 异常记录保留在异常列表中直到重送成功，便于用户核对修正进度；
+     * 重送时只会发送状态为 0/2 的行，已成功的行不会被重复发送。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ExcelData correctData(Long id, com.excel.dto.DataCorrectDTO dto) {
+        ExcelData data = excelDataMapper.selectById(id);
+        if (data == null) {
+            throw new RuntimeException("数据不存在");
+        }
+
+        // 复用导入校验规则
+        com.excel.dto.ExcelDataDTO validate = new com.excel.dto.ExcelDataDTO();
+        validate.setDataCode(data.getDataCode());
+        validate.setName(dto.getName() != null ? dto.getName() : data.getName());
+        validate.setIdCard(dto.getIdCard());
+        validate.setPhone(dto.getPhone());
+        validate.setAmount(dto.getAmount());
+        validate.setAddress(dto.getAddress());
+        validate.setMedicalInsuranceNo(dto.getMedicalInsuranceNo());
+        String errorMsg = com.excel.utils.ValidationUtils.validate(validate);
+        if (errorMsg != null) {
+            throw new RuntimeException("修正后的数据仍不合法: " + errorMsg);
+        }
+
+        // 1) 更新业务字段
+        excelDataMapper.update(null,
+                new LambdaUpdateWrapper<ExcelData>()
+                        .eq(ExcelData::getId, id)
+                        .set(ExcelData::getName, validate.getName())
+                        .set(ExcelData::getIdCard, dto.getIdCard())
+                        .set(ExcelData::getMedicalInsuranceNo, dto.getMedicalInsuranceNo())
+                        .set(ExcelData::getPhone, dto.getPhone())
+                        .set(ExcelData::getAmount, dto.getAmount())
+                        .set(ExcelData::getAddress, dto.getAddress())
+                        .set(ExcelData::getRemark, dto.getRemark())
+        );
+
+        // 2) 仅当该行当前为"上报失败"时，重置为"待重送"，并清除旧错误码
+        //    已上报成功的行不受影响，保证不会被重复发送
+        boolean wasFailed = Integer.valueOf(2).equals(data.getReportStatus());
+        if (wasFailed) {
+            excelDataMapper.update(null,
+                    new LambdaUpdateWrapper<ExcelData>()
+                            .eq(ExcelData::getId, id)
+                            .eq(ExcelData::getReportStatus, 2)
+                            .set(ExcelData::getReportStatus, 0)
+                            .set(ExcelData::getReportMessage, null)
+                            .set(ExcelData::getReportErrorCode, null)
+                            .set(ExcelData::getReportTime, null)
+            );
+        }
+
+        return excelDataMapper.selectById(id);
     }
 
     /**
@@ -141,6 +227,25 @@ public class ExcelImportService {
      */
     public List<ExcelData> getPendingReportData(String batchNo) {
         return excelDataMapper.selectByBatchAndStatus(batchNo, 0);
+    }
+
+    /**
+     * 按ID批量查询数据
+     */
+    public List<ExcelData> listDataByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return excelDataMapper.selectList(
+                new LambdaQueryWrapper<ExcelData>().in(ExcelData::getId, ids)
+        );
+    }
+
+    /**
+     * 按ID查询单行
+     */
+    public ExcelData getDataById(Long id) {
+        return excelDataMapper.selectById(id);
     }
 
     /**

@@ -30,9 +30,19 @@
             <span class="text-green-600 font-medium">{{ row.successCount || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="failCount" label="失败数" width="100" align="center">
+        <el-table-column prop="failCount" label="导入失败" width="90" align="center">
           <template #default="{ row }">
-            <span class="text-red-600 font-medium">{{ row.failCount || 0 }}</span>
+            <span :class="(row.failCount || 0) > 0 ? 'text-red-600 font-medium' : ''">{{ row.failCount || 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reportFailCount" label="上报异常" width="90" align="center">
+          <template #default="{ row }">
+            <span :class="(row.reportFailCount || 0) > 0 ? 'text-red-600 font-medium' : ''">{{ row.reportFailCount || 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reportSuccessCount" label="已上报" width="80" align="center">
+          <template #default="{ row }">
+            <span class="text-green-600">{{ row.reportSuccessCount || 0 }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100" align="center">
@@ -48,14 +58,23 @@
             {{ formatTime(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <div class="flex space-x-2">
               <el-button type="primary" link size="small" @click="viewDetail(row)">
                 详情
               </el-button>
               <el-button
-                v-if="row.status === 1"
+                v-if="(row.reportFailCount || 0) > 0"
+                type="danger"
+                link
+                size="small"
+                @click="handleErrors(row)"
+              >
+                处理异常({{ row.reportFailCount }})
+              </el-button>
+              <el-button
+                v-if="row.status === 1 && (row.reportFailCount || 0) === 0"
                 type="success"
                 link
                 size="small"
@@ -106,18 +125,24 @@
           </div>
         </div>
 
-        <!-- 错误列表 -->
+        <!-- 异常明细 -->
         <div v-if="reportResult.errorList && reportResult.errorList.length > 0">
           <div class="flex items-center justify-between mb-3">
-            <h4 class="font-medium text-gray-700">上报失败数据</h4>
+            <h4 class="font-medium text-gray-700">国家平台异常明细（行号 / 医保编号 / 错误码 / 描述 / 建议）</h4>
             <el-button type="primary" link size="small" @click="exportErrors">
-              导出失败数据
+              导出异常明细
             </el-button>
           </div>
           <el-table :data="reportResult.errorList" stripe max-height="250" size="small">
-            <el-table-column prop="dataCode" label="数据编号" width="120" />
-            <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="errorMsg" label="错误原因" />
+            <el-table-column prop="rowNo" label="行号" width="70" align="center" />
+            <el-table-column prop="medicalInsuranceNo" label="医保编号" width="150" />
+            <el-table-column prop="errorCode" label="错误码" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag type="danger" size="small">{{ row.errorCode }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="errorDesc" label="错误描述" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="处理建议" min-width="180" show-overflow-tooltip />
           </el-table>
         </div>
 
@@ -127,7 +152,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            部分数据上报失败，您可以修正数据后重新上报
+            共 {{ reportResult.failCount }} 条异常，可进入详情页按错误码筛选，在线修正后只重送异常行，无需在几万条数据中手工查找
           </p>
         </div>
       </div>
@@ -138,10 +163,9 @@
           <el-button
             v-if="reportResult?.failCount > 0"
             type="primary"
-            @click="retryReport"
-            :loading="retrying"
+            @click="goDetailHandleErrors"
           >
-            重新上报失败数据
+            去处理异常（按错误码筛选/修正/重送）
           </el-button>
         </div>
       </template>
@@ -170,7 +194,6 @@ const pagination = reactive({
 const reportDialogVisible = ref(false)
 const reportResult = ref(null)
 const currentBatchNo = ref('')
-const retrying = ref(false)
 
 const getStatusType = (status) => {
   const types = { 0: 'info', 1: 'success', 2: 'warning' }
@@ -217,6 +240,16 @@ const viewDetail = (row) => {
   router.push(`/data/${row.batchNo}`)
 }
 
+// 直接进入批次详情的“国家平台异常”页签
+const handleErrors = (row) => {
+  router.push(`/data/${row.batchNo}`)
+}
+
+const goDetailHandleErrors = () => {
+  reportDialogVisible.value = false
+  router.push(`/data/${currentBatchNo.value}`)
+}
+
 const reportData = async (row) => {
   try {
     await ElMessageBox.confirm(
@@ -239,7 +272,7 @@ const reportData = async (row) => {
     if (res.data.failCount === 0) {
       ElMessage.success('数据上报成功')
     } else {
-      ElMessage.warning(`上报完成，${res.data.failCount}条数据上报失败`)
+      ElMessage.warning(`上报完成，${res.data.failCount}条数据异常，可按错误码筛选处理`)
     }
 
     fetchRecords()
@@ -250,30 +283,9 @@ const reportData = async (row) => {
   }
 }
 
-const retryReport = async () => {
-  retrying.value = true
-  try {
-    const res = await excelApi.retryReport(currentBatchNo.value)
-    reportResult.value = res.data
-
-    if (res.data.failCount === 0) {
-      ElMessage.success('重新上报成功')
-    } else {
-      ElMessage.warning(`重新上报完成，仍有${res.data.failCount}条数据失败`)
-    }
-
-    fetchRecords()
-  } catch (error) {
-    // 错误已在拦截器中处理
-  } finally {
-    retrying.value = false
-  }
-}
-
 const exportErrors = () => {
-  const token = userStore.token
   const url = excelApi.exportErrors(currentBatchNo.value)
-  window.open(`${url}?token=${token}`, '_blank')
+  window.open(`${url}?token=${userStore.token}`, '_blank')
 }
 
 onMounted(() => {

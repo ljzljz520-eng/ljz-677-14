@@ -85,6 +85,7 @@ public class ExcelDataListener implements ReadListener<ExcelDataDTO> {
         ExcelData entity = new ExcelData();
         BeanUtil.copyProperties(data, entity);
         entity.setBatchNo(batchNo);
+        entity.setRowNo(rowIndex);
         entity.setReportStatus(0);
 
         cachedDataList.add(entity);
@@ -127,6 +128,7 @@ public class ExcelDataListener implements ReadListener<ExcelDataDTO> {
                     failCount++;
                     ExcelDataDTO errorDto = new ExcelDataDTO();
                     BeanUtil.copyProperties(data, errorDto);
+                    errorDto.setRowIndex(data.getRowNo());
                     errorDto.setErrorMsg("数据库保存失败: " + ex.getMessage());
                     errorList.add(errorDto);
                 }

@@ -15,7 +15,7 @@ public class ReportResultDTO {
     private String batchNo;
 
     /**
-     * 上报总数
+     * 本次上报总数
      */
     private Integer totalCount;
 
@@ -35,7 +35,7 @@ public class ReportResultDTO {
     private String status;
 
     /**
-     * 失败数据列表
+     * 异常明细列表（结构化：行号/医保编号/错误码/错误描述/处理建议）
      */
     private List<ReportErrorItem> errorList;
 
@@ -47,9 +47,44 @@ public class ReportResultDTO {
     @Data
     @Builder
     public static class ReportErrorItem {
-        private Long id;
+        /**
+         * excel_data 主键（修正、单条重送时定位行）
+         */
+        private Long dataId;
+
+        /**
+         * 原始Excel行号
+         */
+        private Integer rowNo;
+
+        /**
+         * 医保编号
+         */
+        private String medicalInsuranceNo;
+
+        /**
+         * 数据编号
+         */
         private String dataCode;
+
+        /**
+         * 姓名
+         */
         private String name;
-        private String errorMsg;
+
+        /**
+         * 国家平台错误码（前端按此筛选）
+         */
+        private String errorCode;
+
+        /**
+         * 错误描述
+         */
+        private String errorDesc;
+
+        /**
+         * 处理建议
+         */
+        private String suggestion;
     }
 }

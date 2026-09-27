@@ -74,18 +74,37 @@ export const excelApi = {
 
   getDataByBatch: (batchNo, params) => request.get(`/excel/data/${batchNo}`, { params }),
 
+  getBatchStats: (batchNo) => request.get(`/excel/stats/${batchNo}`),
+
+  getRow: (id) => request.get(`/excel/row/${id}`),
+
+  correctData: (id, data) => request.put(`/excel/data/correct/${id}`, data),
+
   reportData: (batchNo) => request.post(`/excel/report/${batchNo}`),
 
   getFailedData: (batchNo) => request.get(`/excel/report/failed/${batchNo}`),
 
   retryReport: (batchNo) => request.post(`/excel/report/retry/${batchNo}`),
 
+  // 修正后只重送勾选的异常行
+  retryRows: (batchNo, ids) => request.post(`/excel/report/retry-rows/${batchNo}`, { ids }),
+
+  // 结构化异常明细分页，可按错误码筛选
+  getReportErrors: (batchNo, params) => request.get(`/excel/report/errors/${batchNo}`, { params }),
+
+  // 错误码聚合（筛选用）
+  getErrorCodeStats: (batchNo) => request.get(`/excel/report/error-codes/${batchNo}`),
+
+  // 错误码字典（错误码/描述/处理建议）
+  getErrorCodeDict: () => request.get('/excel/error-code-dict'),
+
   downloadTemplate: () => {
     return `${baseURL}/excel/template`
   },
 
-  exportErrors: (batchNo) => {
-    return `${baseURL}/excel/export/errors/${batchNo}`
+  exportErrors: (batchNo, errorCode) => {
+    const query = errorCode ? `?errorCode=${encodeURIComponent(errorCode)}` : ''
+    return `${baseURL}/excel/export/errors/${batchNo}${query}`
   }
 }
 

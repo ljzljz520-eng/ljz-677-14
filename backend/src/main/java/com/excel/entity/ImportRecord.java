@@ -42,6 +42,21 @@ public class ImportRecord {
     private Integer failCount;
 
     /**
+     * 上报总数
+     */
+    private Integer reportTotalCount;
+
+    /**
+     * 上报成功数
+     */
+    private Integer reportSuccessCount;
+
+    /**
+     * 上报异常数（未处理）
+     */
+    private Integer reportFailCount;
+
+    /**
      * 导入状态：0-处理中 1-完成 2-失败
      */
     private Integer status;

@@ -37,6 +37,10 @@ public class ExcelDataDTO {
     @ColumnWidth(25)
     private String remark;
 
+    @ExcelProperty(value = "医保编号", index = 7)
+    @ColumnWidth(25)
+    private String medicalInsuranceNo;
+
     /**
      * 行号，用于错误定位
      */

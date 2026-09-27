@@ -28,6 +28,11 @@ public class ExcelData {
     private String idCard;
 
     /**
+     * 医保编号
+     */
+    private String medicalInsuranceNo;
+
+    /**
      * 手机号
      */
     private String phone;
@@ -48,6 +53,11 @@ public class ExcelData {
     private String remark;
 
     /**
+     * 原始Excel行号（含表头，便于异常定位）
+     */
+    private Integer rowNo;
+
+    /**
      * 上传批次号
      */
     private String batchNo;
@@ -61,6 +71,11 @@ public class ExcelData {
      * 上报结果信息
      */
     private String reportMessage;
+
+    /**
+     * 最近一次国家平台返回的错误码
+     */
+    private String reportErrorCode;
 
     /**
      * 上报时间
