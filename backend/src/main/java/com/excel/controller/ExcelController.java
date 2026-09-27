@@ -3,16 +3,21 @@ package com.excel.controller;
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.excel.dto.ApiResponse;
+import com.excel.dto.DataCorrectRequest;
+import com.excel.dto.ErrorExportDTO;
 import com.excel.dto.ExcelDataDTO;
 import com.excel.dto.ImportResultDTO;
+import com.excel.dto.ReportErrorPageDTO;
 import com.excel.dto.ReportResultDTO;
 import com.excel.entity.ExcelData;
 import com.excel.entity.ImportRecord;
+import com.excel.enums.ReportErrorCode;
 import com.excel.service.ExcelImportService;
 import com.excel.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,11 +105,22 @@ public class ExcelController {
         return ApiResponse.success(failedList);
     }
 
+    @GetMapping("/report/errors/{batchNo}")
+    @Operation(summary = "分页查询上报异常", description = "查询指定批次的上报异常明细，支持按错误码筛选")
+    public ApiResponse<ReportErrorPageDTO> getReportErrors(
+            @PathVariable String batchNo,
+            @RequestParam(required = false) String errorCode,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        ReportErrorPageDTO result = reportService.getReportErrors(batchNo, errorCode, pageNum, pageSize);
+        return ApiResponse.success(result);
+    }
+
     @PostMapping("/report/retry/{batchNo}")
-    @Operation(summary = "重试上报", description = "重新上报失败的数据")
+    @Operation(summary = "重试上报", description = "仅重新上报失败（异常）的数据行")
     public ApiResponse<ReportResultDTO> retryReport(@PathVariable String batchNo) {
         try {
-            // 先重置失败数据状态
+            // 仅重置失败（异常）行状态，重送时只发送这些行
             reportService.resetFailedData(batchNo);
             // 再次上报
             ReportResultDTO result = reportService.reportToNationalPlatform(batchNo);
@@ -112,6 +128,20 @@ public class ExcelController {
         } catch (Exception e) {
             logger.error("重新上报失败", e);
             return ApiResponse.error("重新上报失败: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/data/{id}")
+    @Operation(summary = "修正数据", description = "修正异常行数据，修正后该行随下次重送仅作为异常行重新上报")
+    public ApiResponse<Void> correctData(@PathVariable Long id, @Valid @RequestBody DataCorrectRequest request) {
+        try {
+            excelImportService.correctData(id, request);
+            return ApiResponse.success("修正成功", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(e.getMessage());
+        } catch (Exception e) {
+            logger.error("数据修正失败", e);
+            return ApiResponse.error("修正失败: " + e.getMessage());
         }
     }
 
@@ -142,20 +172,21 @@ public class ExcelController {
     }
 
     @GetMapping("/export/errors/{batchNo}")
-    @Operation(summary = "导出错误数据", description = "导出上报失败的数据为Excel")
+    @Operation(summary = "导出异常数据", description = "导出上报失败的异常数据（含行号、错误码、错误描述、处理建议）")
     public void exportErrors(@PathVariable String batchNo, HttpServletResponse response) throws IOException {
         List<ExcelData> failedList = reportService.getFailedReportData(batchNo);
 
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("上报失败数据_" + batchNo, StandardCharsets.UTF_8)
+        String fileName = URLEncoder.encode("上报异常数据_" + batchNo, StandardCharsets.UTF_8)
                 .replaceAll("\\+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
 
-        // 转换为DTO
-        List<ExcelDataDTO> exportList = new ArrayList<>();
+        // 转换为导出DTO（含行号、错误码、错误描述、处理建议）
+        List<ErrorExportDTO> exportList = new ArrayList<>();
         for (ExcelData data : failedList) {
-            ExcelDataDTO dto = new ExcelDataDTO();
+            ErrorExportDTO dto = new ErrorExportDTO();
+            dto.setRowIndex(data.getRowIndex());
             dto.setDataCode(data.getDataCode());
             dto.setName(data.getName());
             dto.setIdCard(data.getIdCard());
@@ -163,12 +194,14 @@ public class ExcelController {
             dto.setAmount(data.getAmount());
             dto.setAddress(data.getAddress());
             dto.setRemark(data.getRemark());
+            dto.setErrorCode(data.getErrorCode());
             dto.setErrorMsg(data.getReportMessage());
+            dto.setSuggestion(ReportErrorCode.suggestionOf(data.getErrorCode()));
             exportList.add(dto);
         }
 
-        EasyExcel.write(response.getOutputStream(), ExcelDataDTO.class)
-                .sheet("上报失败数据")
+        EasyExcel.write(response.getOutputStream(), ErrorExportDTO.class)
+                .sheet("上报异常数据")
                 .doWrite(exportList);
     }
 }

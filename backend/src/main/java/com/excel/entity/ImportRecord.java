@@ -53,6 +53,32 @@ public class ImportRecord {
     private String errorDetails;
 
     /**
+     * 上报总数
+     */
+    private Integer reportTotalCount;
+
+    /**
+     * 上报成功数
+     */
+    private Integer reportSuccessCount;
+
+    /**
+     * 上报失败数（待处理异常数）
+     */
+    private Integer reportFailCount;
+
+    /**
+     * 上报异常明细（JSON数组：行号/医保编号/错误码/错误描述/处理建议）
+     * 大字段，列表查询时不返回
+     */
+    private String reportErrorDetails;
+
+    /**
+     * 最近一次上报时间
+     */
+    private LocalDateTime lastReportTime;
+
+    /**
      * 操作人ID
      */
     private Long operatorId;

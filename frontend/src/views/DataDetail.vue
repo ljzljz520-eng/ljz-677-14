@@ -21,6 +21,9 @@
           </svg>
           上报数据
         </el-button>
+        <el-button v-if="stats.failed > 0" type="danger" plain @click="viewReportErrors">
+          查看异常（{{ stats.failed }}）
+        </el-button>
       </div>
     </div>
 
@@ -112,7 +115,13 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="reportMessage" label="上报信息" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="errorCode" label="错误码" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.errorCode" size="small" type="danger">{{ row.errorCode }}</el-tag>
+            <span v-else class="text-gray-300">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reportMessage" label="上报信息" min-width="160" show-overflow-tooltip />
       </el-table>
 
       <!-- 分页 -->
@@ -153,11 +162,27 @@
         </div>
 
         <div v-if="reportResult.errorList && reportResult.errorList.length > 0">
-          <h4 class="font-medium text-gray-700 mb-3">上报失败数据</h4>
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-medium text-gray-700">上报失败数据</h4>
+            <el-button type="primary" link size="small" @click="viewReportErrorsFromResult">
+              按错误码筛选处理
+            </el-button>
+          </div>
           <el-table :data="reportResult.errorList" stripe max-height="250" size="small">
-            <el-table-column prop="dataCode" label="数据编号" width="120" />
-            <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="errorMsg" label="错误原因" />
+            <el-table-column prop="rowIndex" label="行号" width="80" align="center">
+              <template #default="{ row }">
+                {{ row.rowIndex ?? '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="dataCode" label="医保编号" width="120" />
+            <el-table-column prop="name" label="姓名" width="90" />
+            <el-table-column prop="errorCode" label="错误码" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" type="danger">{{ row.errorCode || '-' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="errorMsg" label="错误描述" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="处理建议" min-width="180" show-overflow-tooltip />
           </el-table>
         </div>
       </div>
@@ -166,6 +191,9 @@
         <el-button @click="reportDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 上报异常明细弹窗（按错误码筛选 / 修正 / 重送异常行） -->
+    <ReportErrorsDialog ref="errorsDialogRef" @refreshed="handleErrorsRefreshed" />
   </div>
 </template>
 
@@ -174,6 +202,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { excelApi } from '@/api'
+import ReportErrorsDialog from '@/components/ReportErrorsDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -185,6 +214,7 @@ const statusFilter = ref('')
 const reporting = ref(false)
 const reportDialogVisible = ref(false)
 const reportResult = ref(null)
+const errorsDialogRef = ref(null)
 
 const pagination = reactive({
   pageNum: 1,
@@ -241,6 +271,8 @@ const fetchData = async () => {
 
     // 计算统计数据
     updateStats()
+    // 从服务端获取准确的异常总数（用于"查看异常"入口）
+    fetchErrorTotal()
   } catch (error) {
     // 错误已在拦截器中处理
   } finally {
@@ -248,11 +280,36 @@ const fetchData = async () => {
   }
 }
 
+const fetchErrorTotal = async () => {
+  try {
+    const res = await excelApi.getReportErrors(batchNo.value, { pageNum: 1, pageSize: 1 })
+    stats.failed = res.data.total || 0
+  } catch (error) {
+    // 错误已在拦截器中处理
+  }
+}
+
 const updateStats = () => {
   stats.total = pagination.total
   stats.pending = dataList.value.filter(d => d.reportStatus === 0).length
   stats.success = dataList.value.filter(d => d.reportStatus === 1).length
-  stats.failed = dataList.value.filter(d => d.reportStatus === 2).length
+  // 失败数由 fetchErrorTotal 从服务端获取准确值
+}
+
+// 打开上报异常明细弹窗
+const viewReportErrors = () => {
+  errorsDialogRef.value?.open(batchNo.value)
+}
+
+// 从上报结果弹窗进入异常明细（关闭结果弹窗避免堆叠）
+const viewReportErrorsFromResult = () => {
+  reportDialogVisible.value = false
+  errorsDialogRef.value?.open(batchNo.value)
+}
+
+// 异常弹窗内修正/重送后刷新本页数据
+const handleErrorsRefreshed = () => {
+  fetchData()
 }
 
 const handleSizeChange = (size) => {

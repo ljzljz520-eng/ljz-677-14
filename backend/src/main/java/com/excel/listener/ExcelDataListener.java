@@ -85,6 +85,7 @@ public class ExcelDataListener implements ReadListener<ExcelDataDTO> {
         ExcelData entity = new ExcelData();
         BeanUtil.copyProperties(data, entity);
         entity.setBatchNo(batchNo);
+        entity.setRowIndex(rowIndex);
         entity.setReportStatus(0);
 
         cachedDataList.add(entity);

@@ -78,7 +78,11 @@ export const excelApi = {
 
   getFailedData: (batchNo) => request.get(`/excel/report/failed/${batchNo}`),
 
+  getReportErrors: (batchNo, params) => request.get(`/excel/report/errors/${batchNo}`, { params }),
+
   retryReport: (batchNo) => request.post(`/excel/report/retry/${batchNo}`),
+
+  correctData: (id, data) => request.put(`/excel/data/${id}`, data),
 
   downloadTemplate: () => {
     return `${baseURL}/excel/template`

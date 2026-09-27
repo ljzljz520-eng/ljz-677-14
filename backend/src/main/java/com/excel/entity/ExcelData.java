@@ -53,14 +53,24 @@ public class ExcelData {
     private String batchNo;
 
     /**
+     * Excel原始行号（用于异常定位）
+     */
+    private Integer rowIndex;
+
+    /**
      * 上报状态：0-待上报 1-已上报 2-上报失败
      */
     private Integer reportStatus;
 
     /**
-     * 上报结果信息
+     * 上报结果信息（错误描述）
      */
     private String reportMessage;
+
+    /**
+     * 国家平台返回的错误码
+     */
+    private String errorCode;
 
     /**
      * 上报时间

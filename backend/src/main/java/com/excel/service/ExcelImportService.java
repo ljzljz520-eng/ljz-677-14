@@ -4,7 +4,9 @@ import cn.hutool.core.util.IdUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.support.ExcelTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.excel.dto.DataCorrectRequest;
 import com.excel.dto.ExcelDataDTO;
 import com.excel.dto.ImportResultDTO;
 import com.excel.entity.ExcelData;
@@ -117,12 +119,44 @@ public class ExcelImportService {
 
     /**
      * 获取导入记录列表
+     * 排除 report_error_details 大字段，避免列表接口负载过大
      */
     public Page<ImportRecord> getImportRecords(Integer pageNum, Integer pageSize) {
         Page<ImportRecord> page = new Page<>(pageNum, pageSize);
         return importRecordMapper.selectPage(page,
                 new LambdaQueryWrapper<ImportRecord>()
+                        .select(ImportRecord.class, field -> !field.getColumn().equals("report_error_details"))
                         .orderByDesc(ImportRecord::getCreateTime));
+    }
+
+    /**
+     * 修正异常行数据
+     * 仅允许修正上报失败（异常）的行；修正后该行保持"上报失败"状态，
+     * 下次重送时仅作为异常行重新上报，不影响已上报成功的数据
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void correctData(Long id, DataCorrectRequest request) {
+        ExcelData data = excelDataMapper.selectById(id);
+        if (data == null) {
+            throw new IllegalArgumentException("数据不存在");
+        }
+        if (data.getReportStatus() == null || data.getReportStatus() != 2) {
+            throw new IllegalArgumentException("仅允许修正上报失败的异常数据");
+        }
+
+        // 使用UpdateWrapper显式set，允许用户将可选字段清空
+        excelDataMapper.update(null,
+                new LambdaUpdateWrapper<ExcelData>()
+                        .eq(ExcelData::getId, id)
+                        .set(ExcelData::getName, request.getName())
+                        .set(ExcelData::getIdCard, request.getIdCard())
+                        .set(ExcelData::getPhone, request.getPhone())
+                        .set(ExcelData::getAmount, request.getAmount())
+                        .set(ExcelData::getAddress, request.getAddress())
+                        .set(ExcelData::getRemark, request.getRemark())
+        );
+
+        logger.info("异常数据已修正，ID: {}, 数据编号: {}", id, data.getDataCode());
     }
 
     /**

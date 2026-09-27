@@ -48,8 +48,11 @@ public class ReportResultDTO {
     @Builder
     public static class ReportErrorItem {
         private Long id;
+        private Integer rowIndex;
         private String dataCode;
         private String name;
+        private String errorCode;
         private String errorMsg;
+        private String suggestion;
     }
 }

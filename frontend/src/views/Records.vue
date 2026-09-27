@@ -42,6 +42,21 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="上报异常" width="110" align="center">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.reportFailCount > 0"
+              type="danger"
+              link
+              size="small"
+              @click="viewReportErrors(row)"
+            >
+              {{ row.reportFailCount }}条异常
+            </el-button>
+            <span v-else-if="row.lastReportTime" class="text-green-600 text-sm">已上报</span>
+            <span v-else class="text-gray-400 text-sm">未上报</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="operatorName" label="操作人" width="100" />
         <el-table-column prop="createTime" label="导入时间" width="180">
           <template #default="{ row }">
@@ -110,14 +125,30 @@
         <div v-if="reportResult.errorList && reportResult.errorList.length > 0">
           <div class="flex items-center justify-between mb-3">
             <h4 class="font-medium text-gray-700">上报失败数据</h4>
-            <el-button type="primary" link size="small" @click="exportErrors">
-              导出失败数据
-            </el-button>
+            <div class="flex space-x-3">
+              <el-button type="primary" link size="small" @click="viewReportErrorsFromResult">
+                按错误码筛选处理
+              </el-button>
+              <el-button type="primary" link size="small" @click="exportErrors">
+                导出失败数据
+              </el-button>
+            </div>
           </div>
           <el-table :data="reportResult.errorList" stripe max-height="250" size="small">
-            <el-table-column prop="dataCode" label="数据编号" width="120" />
-            <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="errorMsg" label="错误原因" />
+            <el-table-column prop="rowIndex" label="行号" width="80" align="center">
+              <template #default="{ row }">
+                {{ row.rowIndex ?? '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="dataCode" label="医保编号" width="120" />
+            <el-table-column prop="name" label="姓名" width="90" />
+            <el-table-column prop="errorCode" label="错误码" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" type="danger">{{ row.errorCode || '-' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="errorMsg" label="错误描述" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="处理建议" min-width="180" show-overflow-tooltip />
           </el-table>
         </div>
 
@@ -146,6 +177,9 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 上报异常明细弹窗（按错误码筛选 / 修正 / 重送异常行） -->
+    <ReportErrorsDialog ref="errorsDialogRef" @refreshed="fetchRecords" />
   </div>
 </template>
 
@@ -155,6 +189,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { excelApi } from '@/api'
 import { useUserStore } from '@/stores/user'
+import ReportErrorsDialog from '@/components/ReportErrorsDialog.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -171,6 +206,7 @@ const reportDialogVisible = ref(false)
 const reportResult = ref(null)
 const currentBatchNo = ref('')
 const retrying = ref(false)
+const errorsDialogRef = ref(null)
 
 const getStatusType = (status) => {
   const types = { 0: 'info', 1: 'success', 2: 'warning' }
@@ -215,6 +251,17 @@ const handleCurrentChange = (page) => {
 
 const viewDetail = (row) => {
   router.push(`/data/${row.batchNo}`)
+}
+
+// 打开上报异常明细弹窗（按错误码筛选、修正、重送异常行）
+const viewReportErrors = (row) => {
+  errorsDialogRef.value?.open(row.batchNo)
+}
+
+// 从上报结果弹窗进入异常明细（关闭结果弹窗避免堆叠）
+const viewReportErrorsFromResult = () => {
+  reportDialogVisible.value = false
+  errorsDialogRef.value?.open(currentBatchNo.value)
 }
 
 const reportData = async (row) => {
